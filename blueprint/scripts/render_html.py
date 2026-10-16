@@ -162,10 +162,19 @@ def emit_body(g, sid):
             cyb = bd["y0"] + 26 if not bd["border"] else (bd["y0"] + bd["y1"]) / 2
             p.append(_txt(T.RAIL_W / 2, cyb, bd["label"], 9.5, T.INK_SOFT, weight="700",
                           extra=f' transform="rotate(-90 {T.RAIL_W/2:.1f} {cyb:.1f})"'))
-    # combined-fragment frames (behind messages)
+    # combined-fragment frames (behind messages): box and divider lines first ...
     for fr in g["frames"]:
         p.append(_rect(fr["x0"], fr["y0"], fr["x1"] - fr["x0"], fr["y1"] - fr["y0"],
                        "none", T.FRAME_COL, 1.3, rx=3, dash="6 4", cls="frame"))
+        for dv in fr["divs"]:
+            p.append(_ln(fr["x0"], dv["y"], fr["x1"], dv["y"], T.FRAME_COL, 1.0, dash="5 4"))
+    # activation bars — thin, solid in the column's positional identity colour (matches its header)
+    for b in g["bars"]:
+        fill = g["cols"][b["ci"]]["color"]
+        p.append(_rect(b["x"] - T.BAR_HALF, b["y0"], 2 * T.BAR_HALF, b["y1"] - b["y0"],
+                       fill, T.darken(fill), 0.8, rx=1.5, cls="bar"))
+    # ... then the fragment tab and guard labels ON TOP of the activation bars
+    for fr in g["frames"]:
         tabw = T.text_w(fr["kind"], 10) + 14
         p.append(_rect(fr["x0"], fr["y0"], tabw, 15, T.FRAME_TAB, T.FRAME_COL, 1.2, rx=2))
         p.append(_txt(fr["x0"] + tabw/2, fr["y0"] + 8, fr["kind"], 10, T.FRAME_COL, weight="700"))
@@ -175,14 +184,8 @@ def emit_body(g, sid):
             p.append(_txt(fr["x0"] + tabw + 7, fr["y0"] + 8, f'[{head}]', 10,
                           T.FRAME_COL, anchor="start"))
         for dv in fr["divs"]:
-            p.append(_ln(fr["x0"], dv["y"], fr["x1"], dv["y"], T.FRAME_COL, 1.0, dash="5 4"))
             if dv["guard"]:
                 p.append(_txt(fr["x0"] + 8, dv["y"] + 11, f'[{dv["guard"]}]', 10, T.FRAME_COL, anchor="start"))
-    # activation bars — thin, solid in the column's positional identity colour (matches its header)
-    for b in g["bars"]:
-        fill = g["cols"][b["ci"]]["color"]
-        p.append(_rect(b["x"] - T.BAR_HALF, b["y0"], 2 * T.BAR_HALF, b["y1"] - b["y0"],
-                       fill, T.darken(fill), 0.8, rx=1.5, cls="bar"))
     for i, m in enumerate(g["messages"]):
         p.append(_emit_message(i, m))
     p.append("</svg>")
