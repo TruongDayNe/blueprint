@@ -15,6 +15,8 @@ the NON-phase message order. A bare single-diagram spec (top-level actors+messag
 Usage: python3 validate_master.py <spec_or_master.json>
 """
 import json
+import os
+import re
 import sys
 
 KINDS = {"", "internal", "external"}
@@ -131,7 +133,13 @@ def _validate_scenario(sc, sid, errs, warns):
         if not ok:
             errs.append(f"scenario '{sid}': fragment range {rng} out of bounds "
                         f"(must be [a,b] with 0<=a<=b<{nm}, indexing non-phase messages)")
-        elif rng[0] == rng[1] and fr.get("kind") != "loop":
+        for k, seg in enumerate((fr.get("segments") or [])[1:], start=1):
+            srng = seg.get("range")
+            if not (isinstance(srng, list) and srng and isinstance(srng[0], int)
+                    and (rng[0] if ok else 0) <= srng[0] <= (rng[1] if ok else nm)):
+                warns.append(f"scenario '{sid}': fragment segment #{k + 1} ({seg.get('guard', '')!r}) has no "
+                             f"valid 'range' — its divider will NOT be drawn (add range:[start,..])")
+        if ok and rng[0] == rng[1] and fr.get("kind") != "loop":
             warns.append(f"scenario '{sid}': {fr.get('kind')} fragment wraps a single message "
                          f"{rng} — a box is for ≥2 messages; fold the condition into that "
                          f"message's caption instead (a 1-message loop is the only exception)")
@@ -158,14 +166,69 @@ def validate(m):
     return errs, warns
 
 
+_PATHLIKE = re.compile(r"[\w./\-]+\.[A-Za-z0-9]{1,6}$")
+
+
+def check_evidence(m, repo):
+    repos = repo if isinstance(repo, (list, tuple)) else [repo]
+    if len(repos) > 1:
+        # a path is "found" if ANY repo has it: keep only warnings every repo agrees on
+        per = [set(check_evidence(m, r)) for r in repos]
+        return sorted(set.intersection(*per))
+    repo = repos[0]
+    """Anti-hallucination gate (trailmark/archify idea): every `source_paths` entry and every
+    file-looking token in a message `src` must exist under `repo`. Bare file names are searched
+    by basename. Returns a list of warnings; prose in `src` is ignored."""
+    repo = os.path.abspath(repo)
+    names = set()
+    for root, dirs, files in os.walk(repo):
+        dirs[:] = [d for d in dirs if d not in {".git", "node_modules", "bin", "obj", "dist", ".venv"}]
+        names.update(files)
+
+    def exists(tok):
+        tok = tok.strip().strip("`'\"")
+        if not tok or " " in tok:
+            return True                      # prose, not a path
+        norm = tok.replace("\\", "/")
+        if os.path.exists(os.path.join(repo, norm)):
+            return True
+        if "/" not in norm and _PATHLIKE.match(norm):
+            return norm in names
+        return not _PATHLIKE.match(norm.rsplit("/", 1)[-1]) and os.path.isdir(os.path.join(repo, norm))
+
+    warns = []
+    for i, sc in enumerate(m.get("scenarios") or [m]):
+        sid = sc.get("id", f"#{i}")
+        for sp in sc.get("source_paths", []) or []:
+            if not os.path.exists(os.path.join(repo, str(sp).replace("\\", "/"))):
+                warns.append(f"evidence: scenario '{sid}' source_path not found in repo: {sp!r}")
+        for j, msg in enumerate(sc.get("messages", [])):
+            for tok in re.split(r"\s*(?:→|->|,)\s*", str(msg.get("src", "") or "")):
+                if tok and not exists(tok):
+                    warns.append(f"evidence: scenario '{sid}' msg[{j}] src not found in repo: {tok!r}")
+    return warns
+
+
 def main():
-    if len(sys.argv) != 2:
-        raise SystemExit("usage: validate_master.py <spec_or_master.json>")
+    for st in (sys.stdout, sys.stderr):
+        if hasattr(st, "reconfigure"):
+            st.reconfigure(encoding="utf-8", errors="replace")
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    flags = [a for a in sys.argv[1:] if a.startswith("--")]
+    repo = [sys.argv[k + 1] for k, a in enumerate(sys.argv[:-1]) if a == "--repo"] or None
+    args = [a for a in args if not repo or a not in repo]
+    if len(args) != 1:
+        raise SystemExit("usage: validate_master.py <spec_or_master.json> [--repo DIR [--strict-evidence]]")
     try:
-        m = json.load(open(sys.argv[1]))
+        m = json.load(open(args[0], encoding="utf-8"))
     except json.JSONDecodeError as e:
         raise SystemExit(f"INVALID JSON: {e}")
     errs, warns = validate(m)
+    ev = check_evidence(m, repo) if repo else []
+    if "--strict-evidence" in flags:
+        errs += ev
+    else:
+        warns += ev
     for w in warns:
         print("  warn:", w)
     if errs:
@@ -174,7 +237,7 @@ def main():
             print("  -", e)
         sys.exit(1)
     scns = m.get("scenarios") or [m]
-    print(f"OK — {len(scns)} scenario(s); "
+    print(f"OK - {len(scns)} scenario(s); "
           + ", ".join(f"{s.get('id', '#'+str(i))}:{len(s.get('actors', []))}a/"
                       f"{sum(1 for x in s.get('messages', []) if 'phase' not in x)}m"
                       for i, s in enumerate(scns)))
