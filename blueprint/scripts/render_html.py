@@ -169,8 +169,10 @@ def emit_body(g, sid):
         tabw = T.text_w(fr["kind"], 10) + 14
         p.append(_rect(fr["x0"], fr["y0"], tabw, 15, T.FRAME_TAB, T.FRAME_COL, 1.2, rx=2))
         p.append(_txt(fr["x0"] + tabw/2, fr["y0"] + 8, fr["kind"], 10, T.FRAME_COL, weight="700"))
-        if fr["label"]:
-            p.append(_txt(fr["x0"] + tabw + 7, fr["y0"] + 8, f'[{fr["label"]}]', 10,
+        # first-operand guard (layout computes it as guard0) shows when there is no fragment label
+        head = fr["label"] or fr.get("guard0", "")
+        if head:
+            p.append(_txt(fr["x0"] + tabw + 7, fr["y0"] + 8, f'[{head}]', 10,
                           T.FRAME_COL, anchor="start"))
         for dv in fr["divs"]:
             p.append(_ln(fr["x0"], dv["y"], fr["x1"], dv["y"], T.FRAME_COL, 1.0, dash="5 4"))

@@ -346,5 +346,21 @@ body{ background:var(--bg); color:var(--ink); font-family:var(--mono);
   });
   document.addEventListener('keydown', function(e){ if(e.key === 'Escape') pop.hidden = true; });
 })();
+
+/* keep the sticky header the same width as the scrolling body: when the body shows a vertical
+   scrollbar it is that many px narrower, so the two SVGs scaled differently and the header
+   columns drifted left-to-right. Reserve the same gutter on the header. */
+(function(){
+  function sync(){
+    document.querySelectorAll('.card.active').forEach(function(c){
+      var s = c.querySelector('.scroll'), h = c.querySelector('.head');
+      if(s && h){ h.style.paddingRight = (s.offsetWidth - s.clientWidth) + 'px'; }
+    });
+  }
+  window.addEventListener('load', sync);
+  window.addEventListener('resize', sync);
+  document.addEventListener('click', function(){ setTimeout(sync, 0); });
+  if(window.ResizeObserver){ var ro = new ResizeObserver(sync); document.querySelectorAll('.scroll').forEach(function(s){ ro.observe(s); }); }
+})();
 </script>
 </body></html>
