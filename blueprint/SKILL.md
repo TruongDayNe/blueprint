@@ -68,6 +68,13 @@ every time, and adding scenarios later never touches the ones already drawn.
    python3 scripts/stamp_provenance.py master.json [repo]
    python3 scripts/render_html.py master.json agent_docs/diagrams/index.html
    ```
+   Or run all of it in one command; it stops at the first failing gate (validate, evidence, stamp,
+   render, headless-browser check):
+   ```bash
+   python3 scripts/finalize.py master.json index.html --repo <repo> [--repo <other-repo>] [--png out.png]
+   ```
+   `--repo` also makes `validate_master.py` check that every `source_paths` entry and every file named in
+   a message `src` exists in that repo (a warning; add `--strict-evidence` to make it an error).
 7. **Open the HTML** (or screenshot it headless) before sending; commit the JSON + HTML.
 
 ## Spec schema (v3 — actors are PER SCENARIO)

@@ -248,21 +248,37 @@ def compute(scenario):
     life_bot = max(last_y + 48, (phases[-1]["y"] + 60) if trailing_empty else 0, T.FILL_H)
     height = life_bot                        # extend to FILL_H so a short scenario fills the canvas
 
-    # ── activation bars (req…ret stack; unreturned -> short bump) ─────────────
-    bars, stack = [], {}
+    # ── activation bars: one per call, spanning request -> LAST return to that caller ──
+    # A call can have several returns (early 400 vs final 200); the bar covers all of them. A call
+    # nobody returns to (a user click) stays active until the actor's last involvement before its
+    # next activation, so lifelines read as continuous periods of work, not fragments.
+    bars, acts = [], {}
     for om in out_msgs:
         yy = om["y"]
         if om["type"] == "self":
             bars.append({"x": om["x"], "y0": yy - 4, "y1": yy + 18, "ci": om["ci"]})
         elif om["type"] == "note":
             continue
-        elif om["kind"] == "ret" and stack.get(om["si"]):
-            bars.append({"x": cx(om["si"]), "y0": stack[om["si"]].pop(), "y1": yy, "ci": om["si"]})
+        elif om["kind"] == "ret":
+            for a_ in reversed(acts.get(om["si"], [])):
+                if a_["caller"] == om["di"]:
+                    a_["y1"] = max(a_["y1"] or 0, yy)
+                    break
         else:
-            stack.setdefault(om["di"], []).append(yy)
-    for ci, ys in stack.items():
-        for y0 in ys:
-            bars.append({"x": cx(ci), "y0": y0, "y1": y0 + 18, "ci": ci})
+            acts.setdefault(om["di"], []).append({"y0": yy, "y1": None, "caller": om["si"]})
+    last_involved = {}
+    for om in out_msgs:
+        if om["type"] == "note":
+            continue
+        for ci in {om["si"], om["di"]} if om["type"] == "msg" else {om["ci"]}:
+            last_involved.setdefault(ci, []).append(om["y"])
+    for ci, lst in acts.items():
+        for k, a_ in enumerate(lst):
+            if a_["y1"] is None:
+                nxt = lst[k + 1]["y0"] if k + 1 < len(lst) else float("inf")
+                ys = [y for y in last_involved.get(ci, []) if a_["y0"] <= y < nxt]
+                a_["y1"] = max([a_["y0"] + 18] + ys)
+            bars.append({"x": cx(ci), "y0": a_["y0"], "y1": a_["y1"], "ci": ci})
 
     # ── arrow endpoints land on the OBJECT EDGE, never penetrating it ──────────
     def bar_at(xv, yv):
